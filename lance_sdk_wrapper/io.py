@@ -58,18 +58,22 @@ def _prepare_blob_columns(
     def blob_array(array: pa.Array) -> pa.Array:
         return lance.blob_array(array.to_pylist())
 
-    def convert_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
-        target_schema = blob_schema(batch.schema)
+    def convert_batch(
+        batch: pa.RecordBatch,
+        source_schema: pa.Schema,
+    ) -> pa.RecordBatch:
+        target_schema = blob_schema(source_schema)
         arrays = [
             blob_array(column) if is_binary(field) else column
-            for field, column in zip(batch.schema, batch.columns, strict=True)
+            for field, column in zip(source_schema, batch.columns, strict=True)
         ]
         return pa.RecordBatch.from_arrays(arrays, schema=target_schema)
 
     if isinstance(data, pa.Table):
-        target_schema = blob_schema(data.schema)
+        source_schema = schema if schema is not None else data.schema
+        target_schema = blob_schema(source_schema)
         columns = []
-        for field, column in zip(data.schema, data.columns, strict=True):
+        for field, column in zip(source_schema, data.columns, strict=True):
             if is_binary(field):
                 chunks = [blob_array(chunk) for chunk in column.chunks]
                 columns.append(
@@ -81,14 +85,16 @@ def _prepare_blob_columns(
         return table, target_schema
 
     if isinstance(data, pa.RecordBatch):
-        batch = convert_batch(data)
+        source_schema = schema if schema is not None else data.schema
+        batch = convert_batch(data, source_schema)
         return batch, batch.schema
 
     if isinstance(data, pa.RecordBatchReader):
-        target_schema = blob_schema(data.schema)
+        source_schema = schema if schema is not None else data.schema
+        target_schema = blob_schema(source_schema)
         reader = pa.RecordBatchReader.from_batches(
             target_schema,
-            (convert_batch(batch) for batch in data),
+            (convert_batch(batch, source_schema) for batch in data),
         )
         return reader, target_schema
 

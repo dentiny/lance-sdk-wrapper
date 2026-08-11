@@ -25,9 +25,9 @@ class LanceWriter:
         self,
         uri: str | PathLike[str],
         *,
-        config: WriterConfig | None = None,
-        schema: Any | None = None,
+        schema: Any,
         mode: WriteMode = WriteMode.CREATE,
+        config: WriterConfig | None = None,
         **lance_options: Any,
     ) -> None:
         if not isinstance(mode, WriteMode):
