@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 KiB = 1024
 MiB = 1024 * KiB
 GiB = 1024 * MiB
+DATA_STORAGE_VERSION: Final = "2.3"
 
 
 class WriterConfig:
@@ -66,7 +67,7 @@ class WriterConfig:
         """Translate this configuration to Lance ``write_dataset`` options."""
 
         return {
-            "data_storage_version": "2.3",
+            "data_storage_version": DATA_STORAGE_VERSION,
             "max_bytes_per_file": self.target_file_size_bytes,
             "blob_pack_file_size_threshold": self.blob_pack_file_size_bytes,
         }

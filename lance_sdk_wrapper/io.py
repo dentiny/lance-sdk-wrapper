@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from enum import Enum
 from os import PathLike
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .config import WriterConfig
+
+if TYPE_CHECKING:
+    from lance import LanceDataset
 
 
 class WriteMode(str, Enum):
@@ -109,11 +112,18 @@ def write_dataset(
     mode: WriteMode = WriteMode.CREATE,
     config: WriterConfig | None = None,
     **lance_options: Any,
-) -> Any:
-    """Write a Lance 2.3 dataset using validated defaults.
+) -> LanceDataset:
+    """Write a Lance 2.3 dataset using SDK-managed defaults.
 
     Other Lance options remain available as keyword arguments. Options managed
     by :class:`WriterConfig` must be changed on ``config``.
+
+    Returns
+    -------
+    LanceDataset
+        The committed Lance dataset at its new latest version. For create and
+        overwrite operations this is the newly written dataset; for append
+        operations it includes both the existing and appended rows.
     """
 
     if not isinstance(mode, WriteMode):
