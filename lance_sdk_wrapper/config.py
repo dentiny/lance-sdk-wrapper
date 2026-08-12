@@ -63,6 +63,25 @@ class WriterConfig:
     def blob_pack_file_size_bytes(self, value: int) -> None:
         self._blob_pack_file_size_bytes = value
 
+    def validate(self) -> None:
+        """Validate this configuration before creating a writer."""
+
+        byte_fields = {
+            "target_file_size_bytes": self.target_file_size_bytes,
+            "blob_inline_threshold_bytes": self.blob_inline_threshold_bytes,
+            "blob_dedicated_threshold_bytes": self.blob_dedicated_threshold_bytes,
+            "blob_pack_file_size_bytes": self.blob_pack_file_size_bytes,
+        }
+        for name, value in byte_fields.items():
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+
+        if self.blob_inline_threshold_bytes >= self.blob_dedicated_threshold_bytes:
+            raise ValueError(
+                "blob_inline_threshold_bytes must be smaller than "
+                "blob_dedicated_threshold_bytes"
+            )
+
     def lance_write_options(self) -> dict[str, Any]:
         """Translate this configuration to Lance ``write_dataset`` options."""
 
