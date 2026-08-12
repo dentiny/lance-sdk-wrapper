@@ -43,57 +43,15 @@ def _validate_lance_options(lance_options: Mapping[str, Any]) -> None:
         raise TypeError(f"{names} cannot be configured through this wrapper")
 
 
-def write_dataset(
-    data: Any,
-    uri: str | PathLike[str],
-    *,
-    schema: Any | None = None,
-    mode: WriteMode = WriteMode.CREATE,
-    config: WriterConfig | None = None,
-    **lance_options: Any,
-) -> LanceDataset:
-    """Write a Lance 2.3 dataset using SDK-managed defaults.
-
-    Other Lance options remain available as keyword arguments. Options managed
-    by :class:`WriterConfig` must be changed on ``config``.
-
-    Returns
-    -------
-    LanceDataset
-        The committed Lance dataset at its new latest version. For create and
-        overwrite operations this is the newly written dataset; for append
-        operations it includes both the existing and appended rows.
-    """
-
-    if not isinstance(mode, WriteMode):
-        raise TypeError("mode must be a WriteMode")
-
-    _validate_lance_options(lance_options)
-
-    import lance
-
-    config = config or WriterConfig()
-    options = config.lance_write_options()
-    options.update(lance_options)
-    return lance.write_dataset(
-        data,
-        uri,
-        schema=schema,
-        mode=mode.value,
-        **options,
-    )
-
-
 class LanceWriter:
     """Public writer facade for Lance datasets."""
 
     __slots__ = (
         "_closed",
-        "_config",
-        "_lance_options",
         "_mode",
         "_schema",
         "_uri",
+        "_write_options",
     )
 
     def __init__(
@@ -114,27 +72,23 @@ class LanceWriter:
         _validate_lance_options(lance_options)
 
         self._uri = uri
-        self._config = config or WriterConfig()
-        self._config.validate()
+        config = config or WriterConfig()
+        config.validate()
         self._schema = schema
         self._mode = mode
-        self._lance_options = dict(lance_options)
+        self._write_options = config.lance_write_options()
+        self._write_options.update(lance_options)
         self._closed = False
 
     @property
     def closed(self) -> bool:
         return self._closed
 
-    def write(self, data: Any) -> Any:
+    def write(self, data: Any) -> LanceDataset:
+        """Write data and return the newly committed Lance dataset version."""
+
         self._ensure_open()
-        result = write_dataset(
-            data,
-            self._uri,
-            schema=self._schema,
-            mode=self._mode,
-            config=self._config,
-            **self._lance_options,
-        )
+        result = self._write_dataset(data)
         self._mode = WriteMode.APPEND
         return result
 
@@ -151,3 +105,14 @@ class LanceWriter:
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("writer is closed")
+
+    def _write_dataset(self, data: Any) -> LanceDataset:
+        import lance
+
+        return lance.write_dataset(
+            data,
+            self._uri,
+            schema=self._schema,
+            mode=self._mode.value,
+            **self._write_options,
+        )

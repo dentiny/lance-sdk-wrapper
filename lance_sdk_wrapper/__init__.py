@@ -1,5 +1,5 @@
 from .config import DATA_STORAGE_VERSION, GiB, KiB, MiB, WriterConfig
-from .writer import LanceWriter, WriteMode, write_dataset
+from .writer import LanceWriter, WriteMode
 
 __all__ = [
     "DATA_STORAGE_VERSION",
@@ -9,5 +9,4 @@ __all__ = [
     "MiB",
     "WriteMode",
     "WriterConfig",
-    "write_dataset",
 ]
