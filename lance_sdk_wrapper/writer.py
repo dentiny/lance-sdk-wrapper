@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from enum import Enum
 from os import PathLike
 from typing import TYPE_CHECKING, Any
@@ -10,6 +9,7 @@ from typing_extensions import Self
 from .config import WriterConfig
 
 if TYPE_CHECKING:
+    import pyarrow as pa
     from lance import LanceDataset
 
 
@@ -19,35 +19,50 @@ class WriteMode(str, Enum):
     OVERWRITE = "overwrite"
 
 
-_MANAGED_WRITE_OPTIONS = frozenset(
-    {
-        "data_storage_version",
-        "max_bytes_per_file",
-        "blob_pack_file_size_threshold",
-    }
-)
-_BLOCKED_WRITE_OPTIONS = frozenset({"external_blob_mode"})
+def _configure_blob_fields(
+    schema: pa.Schema,
+    config: WriterConfig,
+) -> pa.Schema:
+    """Apply SDK Blob thresholds to fields already marked as Lance Blob v2.
 
+    Non-Blob fields are preserved unchanged. Existing field and schema metadata
+    are retained, while threshold metadata is replaced with values from
+    ``WriterConfig``.
 
-def _validate_lance_options(lance_options: Mapping[str, Any]) -> None:
-    conflicts = _MANAGED_WRITE_OPTIONS.intersection(lance_options)
-    if conflicts:
-        names = ", ".join(sorted(conflicts))
-        raise TypeError(
-            f"{names} must be configured through WriterConfig, not passed directly"
+    Returns
+    -------
+    pyarrow.Schema
+        A schema ready to use for all writes performed by ``LanceWriter``.
+    """
+
+    import lance
+    import pyarrow as pa
+
+    fields = []
+    for field in schema:
+        is_blob = (
+            isinstance(field.type, pa.ExtensionType)
+            and field.type.extension_name == "lance.blob.v2"
         )
+        if is_blob:
+            configured = lance.blob_field(
+                field.name,
+                nullable=field.nullable,
+                **config.lance_blob_options(),
+            )
+            metadata = dict(field.metadata or {})
+            metadata.update(configured.metadata or {})
+            fields.append(configured.with_metadata(metadata))
+        else:
+            fields.append(field)
 
-    blocked = _BLOCKED_WRITE_OPTIONS.intersection(lance_options)
-    if blocked:
-        names = ", ".join(sorted(blocked))
-        raise TypeError(f"{names} cannot be configured through this wrapper")
+    return pa.schema(fields, metadata=schema.metadata)
 
 
 class LanceWriter:
     """Public writer facade for Lance datasets."""
 
     __slots__ = (
-        "_blob_fields",
         "_closed",
         "_mode",
         "_schema",
@@ -62,46 +77,21 @@ class LanceWriter:
         schema: Any,
         mode: WriteMode = WriteMode.CREATE,
         config: WriterConfig | None = None,
-        **lance_options: Any,
     ) -> None:
-        import lance
         import pyarrow as pa
 
         if not isinstance(schema, pa.Schema):
             raise TypeError("schema must be a pyarrow.Schema")
         if not isinstance(mode, WriteMode):
             raise TypeError("mode must be a WriteMode")
-        _validate_lance_options(lance_options)
 
         self._uri = uri
         config = config or WriterConfig()
         config.validate()
 
-        fields = []
-        blob_fields = []
-        for field in schema:
-            is_blob = (
-                isinstance(field.type, pa.ExtensionType)
-                and field.type.extension_name == "lance.blob.v2"
-            )
-            if is_blob:
-                blob_fields.append(field.name)
-                configured = lance.blob_field(
-                    field.name,
-                    nullable=field.nullable,
-                    **config.lance_blob_options(),
-                )
-                metadata = dict(field.metadata or {})
-                metadata.update(configured.metadata or {})
-                fields.append(configured.with_metadata(metadata))
-            else:
-                fields.append(field)
-
-        self._blob_fields = tuple(blob_fields)
-        self._schema = pa.schema(fields, metadata=schema.metadata)
+        self._schema = _configure_blob_fields(schema, config)
         self._mode = mode
         self._write_options = config.lance_write_options()
-        self._write_options.update(lance_options)
         self._closed = False
 
     @property
