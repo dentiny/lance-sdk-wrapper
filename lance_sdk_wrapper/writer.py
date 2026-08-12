@@ -62,14 +62,6 @@ def _configure_blob_fields(
 class LanceWriter:
     """Public writer facade for Lance datasets."""
 
-    __slots__ = (
-        "_closed",
-        "_mode",
-        "_schema",
-        "_uri",
-        "_write_options",
-    )
-
     def __init__(
         self,
         uri: str | PathLike[str],

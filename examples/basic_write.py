@@ -1,15 +1,24 @@
+import lance
 import pyarrow as pa
 from lance import blob_array, blob_field
 
-from lance_sdk_wrapper import LanceWriter, MiB, WriteMode, WriterConfig
+from lance_sdk_wrapper import (
+    LanceWriter,
+    MiB,
+    WriteMode,
+    WriterConfig,
+)
 
 
 def main() -> None:
     config = WriterConfig()
     config.target_file_size_bytes = 256 * MiB
-    # The SDK applies these thresholds automatically to Arrow binary columns.
     config.blob_inline_threshold_bytes = 1 * MiB
     config.blob_dedicated_threshold_bytes = 16 * MiB
+    config.connect_timeout_seconds = 10
+    config.request_timeout_seconds = 60
+    config.client_max_retries = 5
+    config.client_retry_timeout_seconds = 300
 
     # Mark the payload as Blob v2. LanceWriter detects this field and applies
     # the thresholds from WriterConfig; callers do not pass Blob options.
@@ -38,14 +47,19 @@ def main() -> None:
         schema=schema,
     )
 
+    uri = "./example.lance"
     with LanceWriter(
-        "./example.lance",
+        uri,
         schema=schema,
         mode=WriteMode.CREATE,
         config=config,
     ) as writer:
         writer.write(first_batch)
         writer.write(second_batch)
+
+    dataset = lance.dataset(uri)
+    for batch in dataset.to_batches(blob_handling="all_binary"):
+        print(batch)
 
 
 if __name__ == "__main__":
