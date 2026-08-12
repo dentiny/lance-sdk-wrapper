@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import Enum
 from os import PathLike
 from typing import TYPE_CHECKING, Any
@@ -28,6 +29,20 @@ _MANAGED_WRITE_OPTIONS = frozenset(
 _BLOCKED_WRITE_OPTIONS = frozenset({"external_blob_mode"})
 
 
+def _validate_lance_options(lance_options: Mapping[str, Any]) -> None:
+    conflicts = _MANAGED_WRITE_OPTIONS.intersection(lance_options)
+    if conflicts:
+        names = ", ".join(sorted(conflicts))
+        raise TypeError(
+            f"{names} must be configured through WriterConfig, not passed directly"
+        )
+
+    blocked = _BLOCKED_WRITE_OPTIONS.intersection(lance_options)
+    if blocked:
+        names = ", ".join(sorted(blocked))
+        raise TypeError(f"{names} cannot be configured through this wrapper")
+
+
 def write_dataset(
     data: Any,
     uri: str | PathLike[str],
@@ -53,17 +68,7 @@ def write_dataset(
     if not isinstance(mode, WriteMode):
         raise TypeError("mode must be a WriteMode")
 
-    conflicts = _MANAGED_WRITE_OPTIONS.intersection(lance_options)
-    if conflicts:
-        names = ", ".join(sorted(conflicts))
-        raise TypeError(
-            f"{names} must be configured through WriterConfig, not passed directly"
-        )
-
-    blocked = _BLOCKED_WRITE_OPTIONS.intersection(lance_options)
-    if blocked:
-        names = ", ".join(sorted(blocked))
-        raise TypeError(f"{names} cannot be configured through this wrapper")
+    _validate_lance_options(lance_options)
 
     import lance
 
@@ -106,6 +111,7 @@ class LanceWriter:
             raise TypeError("schema must be a pyarrow.Schema")
         if not isinstance(mode, WriteMode):
             raise TypeError("mode must be a WriteMode")
+        _validate_lance_options(lance_options)
 
         self._uri = uri
         self._config = config or WriterConfig()
