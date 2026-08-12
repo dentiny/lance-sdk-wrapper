@@ -1,4 +1,5 @@
 import pyarrow as pa
+from lance import blob_array, blob_field
 
 from lance_sdk_wrapper import LanceWriter, MiB, WriteMode, WriterConfig
 
@@ -10,13 +11,17 @@ def main() -> None:
     config.blob_inline_threshold_bytes = 1 * MiB
     config.blob_dedicated_threshold_bytes = 16 * MiB
 
-    # Declare an ordinary Arrow binary field. LanceWriter converts it to Lance
-    # Blob v2 internally, so callers do not need Lance blob helpers.
+    # Blob placement is part of the Lance schema, so configure the Blob v2
+    # field before constructing LanceWriter.
     schema = pa.schema(
         [
             pa.field("id", pa.int64(), nullable=False),
             pa.field("name", pa.string(), nullable=False),
-            pa.field("payload", pa.binary(), nullable=False),
+            blob_field(
+                "payload",
+                nullable=False,
+                **config.lance_blob_options(),
+            ),
         ]
     )
 
@@ -24,7 +29,7 @@ def main() -> None:
         {
             "id": [1, 2],
             "name": ["Alice", "Bob"],
-            "payload": [b"first payload", b"second payload"],
+            "payload": blob_array([b"first payload", b"second payload"]),
         },
         schema=schema,
     )
@@ -32,7 +37,7 @@ def main() -> None:
         {
             "id": [3],
             "name": ["Charlie"],
-            "payload": [b"third payload"],
+            "payload": blob_array([b"third payload"]),
         },
         schema=schema,
     )

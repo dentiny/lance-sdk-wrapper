@@ -30,6 +30,10 @@ class LanceWriter:
         config: WriterConfig | None = None,
         **lance_options: Any,
     ) -> None:
+        import pyarrow as pa
+
+        if not isinstance(schema, pa.Schema):
+            raise TypeError("schema must be a pyarrow.Schema")
         if not isinstance(mode, WriteMode):
             raise TypeError("mode must be a WriteMode")
 
