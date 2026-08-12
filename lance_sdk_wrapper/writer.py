@@ -47,6 +47,7 @@ class LanceWriter:
     """Public writer facade for Lance datasets."""
 
     __slots__ = (
+        "_blob_fields",
         "_closed",
         "_mode",
         "_schema",
@@ -63,6 +64,7 @@ class LanceWriter:
         config: WriterConfig | None = None,
         **lance_options: Any,
     ) -> None:
+        import lance
         import pyarrow as pa
 
         if not isinstance(schema, pa.Schema):
@@ -74,7 +76,29 @@ class LanceWriter:
         self._uri = uri
         config = config or WriterConfig()
         config.validate()
-        self._schema = schema
+
+        fields = []
+        blob_fields = []
+        for field in schema:
+            is_blob = (
+                isinstance(field.type, pa.ExtensionType)
+                and field.type.extension_name == "lance.blob.v2"
+            )
+            if is_blob:
+                blob_fields.append(field.name)
+                configured = lance.blob_field(
+                    field.name,
+                    nullable=field.nullable,
+                    **config.lance_blob_options(),
+                )
+                metadata = dict(field.metadata or {})
+                metadata.update(configured.metadata or {})
+                fields.append(configured.with_metadata(metadata))
+            else:
+                fields.append(field)
+
+        self._blob_fields = tuple(blob_fields)
+        self._schema = pa.schema(fields, metadata=schema.metadata)
         self._mode = mode
         self._write_options = config.lance_write_options()
         self._write_options.update(lance_options)
@@ -108,6 +132,15 @@ class LanceWriter:
 
     def _write_dataset(self, data: Any) -> LanceDataset:
         import lance
+        import pyarrow as pa
+
+        if isinstance(data, (pa.Table, pa.RecordBatch)):
+            data = data.cast(self._schema)
+        elif isinstance(data, pa.RecordBatchReader):
+            data = pa.RecordBatchReader.from_batches(
+                self._schema,
+                (batch.cast(self._schema) for batch in data),
+            )
 
         return lance.write_dataset(
             data,

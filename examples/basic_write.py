@@ -11,17 +11,13 @@ def main() -> None:
     config.blob_inline_threshold_bytes = 1 * MiB
     config.blob_dedicated_threshold_bytes = 16 * MiB
 
-    # Blob placement is part of the Lance schema, so configure the Blob v2
-    # field before constructing LanceWriter.
+    # Mark the payload as Blob v2. LanceWriter detects this field and applies
+    # the thresholds from WriterConfig; callers do not pass Blob options.
     schema = pa.schema(
         [
             pa.field("id", pa.int64(), nullable=False),
             pa.field("name", pa.string(), nullable=False),
-            blob_field(
-                "payload",
-                nullable=False,
-                **config.lance_blob_options(),
-            ),
+            blob_field("payload", nullable=False),
         ]
     )
 
